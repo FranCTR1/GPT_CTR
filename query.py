@@ -4,34 +4,22 @@ import pandas as pd
 from dotenv import load_dotenv
 from openai import OpenAI
 
---- a/query.py
-+++ b/query.py
-@@
--import chromadb
-+import os
-+# ─── Fuerza a ChromaDB a usar DuckDB+Parquet y persistir en /tmp ──────────
-+os.environ["CHROMA_DB_IMPL"]         = "duckdb+parquet"
-+os.environ["CHROMA_PERSIST_DIRECTORY"] = "/tmp/chromadb_local"
-+import chromadb
-
- # ─── Configuración y carga de datos ────────────────────────────────────────────
- load_dotenv()
- api_key       = os.getenv("OPENAI_API_KEY")
- client_openai = OpenAI(api_key=api_key)
-- client_chroma = chromadb.PersistentClient(path="./chromadb_local")
-+ client_chroma = chromadb.PersistentClient(path=os.environ["CHROMA_PERSIST_DIRECTORY"])
- collection    = client_chroma.get_or_create_collection("empresa_docs")
-
-import chromadb
+# ─── Intento de cargar ChromaDB, con fallback ────────────────────────────────
+HAS_CHROMA = True
+try:
+    import chromadb
+    # En Streamlit Cloud apunta a /tmp, que sí se puede escribir
+    client_chroma = chromadb.PersistentClient(path="/tmp/chromadb_local")
+    collection    = client_chroma.get_or_create_collection("empresa_docs")
+except Exception:
+    HAS_CHROMA     = False
+    client_chroma  = None
+    collection     = None
 
 # ─── Configuración y carga de datos ────────────────────────────────────────────
 load_dotenv()
 api_key       = os.getenv("OPENAI_API_KEY")
 client_openai = OpenAI(api_key=api_key)
-# ─── Uso de /tmp para que Cloud permita escribir ────────────────────────────────
-client_chroma = chromadb.PersistentClient(path="/tmp/chromadb_local")
-
-collection    = client_chroma.get_or_create_collection("empresa_docs")
 
 DATA_DIR = "data"
 COLUMN_KEYWORDS = {
@@ -131,11 +119,22 @@ def buscar_por_sku(sku: str) -> str:
 
 
 def buscar_por_descripcion(texto: str) -> str:
-    return buscar_en_tablas_libre(texto) or f"No hallé coincidencias para descripción “{texto}”.\n"
+    # Reutiliza tu búsqueda libre en tablas
+    for fname, df in _tablas.items():
+        df_low = _tablas_lower[fname]
+        mask   = df_low.apply(lambda col: col.str.contains(texto.lower(), na=False)).any(axis=1)
+        if mask.any():
+            row   = df.loc[mask].iloc[0]
+            lines = [f"## 🔍 Coincidencia en **{fname}**"]
+            for col in df.columns:
+                val = row[col] or "N/D"
+                lines.append(f"- **{col}:** {val}")
+            return "\n".join(lines) + "\n"
+    return f"No hallé coincidencias para descripción “{texto}”.\n"
 
 
 def buscar_por_espro(espro: str) -> str:
-    espro_low = espro.lower()
+    espro_low  = espro.lower()
     productos = []
     for fname, df in _tablas.items():
         df_low     = _tablas_lower[fname]
@@ -164,24 +163,12 @@ def buscar_por_espro(espro: str) -> str:
     return f"No se encontraron productos para ESPro **{espro}**.\n"
 
 
-# ─── BÚSQUEDA LIBRE EN TABLAS ────────────────────────────────────────────────
-def buscar_en_tablas_libre(pregunta: str) -> str:
-    q_low = pregunta.lower()
-    for fname, df in _tablas.items():
-        df_low = _tablas_lower[fname]
-        mask   = df_low.apply(lambda col: col.str.contains(q_low, na=False)).any(axis=1)
-        if mask.any():
-            row   = df.loc[mask].iloc[0]
-            lines = [f"## 🔍 Coincidencia en **{fname}**"]
-            for col in df.columns:
-                val = row[col] or "N/D"
-                lines.append(f"- **{col}:** {val}")
-            return "\n".join(lines) + "\n"
-    return None
-
-
 # ─── BÚSQUEDA SEMÁNTICA ──────────────────────────────────────────────────────
 def buscar_semantica(pregunta: str) -> str:
+    # Si Chroma falló al cargar, devolvemos stub
+    if not HAS_CHROMA:
+        return "🚧 Recomendación semántica no disponible en este entorno.\n"
+
     try:
         emb = client_openai.embeddings.create(
             input=pregunta, model="text-embedding-ada-002"
@@ -197,11 +184,11 @@ def buscar_semantica(pregunta: str) -> str:
     except Exception as e:
         return f"Error en semántica: {e}\n"
 
-    # Si no hay metadatos válidos, uso formatear_snippets
+    # Si no hay metadatos válidos, formateo solo snippets
     if not metas or not any(isinstance(m, dict) for m in metas):
         return formatear_snippets(docs)
 
-    # Con metadatos, formateo como productos
+    # Con metadatos, formateo con GPT
     productos = []
     for doc, meta in zip(docs, metas):
         m = meta or {}
@@ -236,7 +223,7 @@ def generate_response(pregunta: str) -> str:
         return buscar_por_espro(m.group(1))
     if re.search(r"\b(recomiend\w*|sugier\w*|qué me recomiendas)\b", pregunta.lower()):
         return buscar_semantica(pregunta)
-    free = buscar_en_tablas_libre(pregunta)
+    free = buscar_por_descripcion(pregunta)
     if free:
         return free
     return buscar_semantica(pregunta)
