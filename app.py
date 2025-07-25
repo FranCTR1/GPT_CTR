@@ -12,11 +12,15 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 if prompt := st.chat_input("Hazme una pregunta sobre materiales de laboratorio..."):
+    # append user
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # generate once
     response = generate_response(prompt)
+
+    # append assistant
     st.session_state.messages.append({"role": "assistant", "content": response})
     with st.chat_message("assistant"):
         st.markdown(response)
