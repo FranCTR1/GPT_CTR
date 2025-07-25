@@ -159,12 +159,26 @@ def buscar_semantica(preg: str) -> str:
 # ─── GENERADOR DE RESPUESTA ──────────────────────────────────────────────────
 def generate_response(preg: str) -> str:
     p = preg.strip()
+
+    # SKU:
     if m := re.match(r"^sku:\s*(\S+)", p, re.I):
         return buscar_por_sku(m.group(1))
+
+    # DESCRIPCIÓN:
     if m := re.match(r"^descripcion:\s*(.+)", p, re.I):
         return buscar_por_descripcion(m.group(1))
+
+    # ESPRO:
     if m := re.match(r"^espro:\s*(.+)", p, re.I):
         return buscar_por_espro(m.group(1))
-    if re.search(r"\b(recomiend\w*|sugier\w*|qué me recomiendas)\b", p.lower()):
+
+    # SEMÁNTICA — captura "recomiend...", "sugier..." y "q(ue|ué) me recomiendas"
+    sem_pattern = re.compile(
+        r"\b(?:recomiend\w*|sugier\w*|q(?:ue|ué) me recomiendas)\b",
+        re.IGNORECASE
+    )
+    if sem_pattern.search(p):
         return buscar_semantica(p)
+
+    # Fallback a descripción
     return buscar_por_descripcion(p)
