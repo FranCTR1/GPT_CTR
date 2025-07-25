@@ -3,6 +3,25 @@ import re
 import pandas as pd
 from dotenv import load_dotenv
 from openai import OpenAI
+
+--- a/query.py
++++ b/query.py
+@@
+-import chromadb
++import os
++# ─── Fuerza a ChromaDB a usar DuckDB+Parquet y persistir en /tmp ──────────
++os.environ["CHROMA_DB_IMPL"]         = "duckdb+parquet"
++os.environ["CHROMA_PERSIST_DIRECTORY"] = "/tmp/chromadb_local"
++import chromadb
+
+ # ─── Configuración y carga de datos ────────────────────────────────────────────
+ load_dotenv()
+ api_key       = os.getenv("OPENAI_API_KEY")
+ client_openai = OpenAI(api_key=api_key)
+- client_chroma = chromadb.PersistentClient(path="./chromadb_local")
++ client_chroma = chromadb.PersistentClient(path=os.environ["CHROMA_PERSIST_DIRECTORY"])
+ collection    = client_chroma.get_or_create_collection("empresa_docs")
+
 import chromadb
 
 # ─── Configuración y carga de datos ────────────────────────────────────────────
