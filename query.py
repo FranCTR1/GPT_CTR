@@ -1,3 +1,7 @@
+# FORCE sqlite3 to use pysqlite3 (with SQLite ≥ 3.35) for ChromaDB on Streamlit Cloud
+import sys
+__import__("pysqlite3")
+sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
 import os
 import re
 import pandas as pd
@@ -9,8 +13,7 @@ import chromadb
 load_dotenv()
 api_key       = os.getenv("OPENAI_API_KEY")
 client_openai = OpenAI(api_key=api_key)
-# versión en memoria — no escribe en disco
-client_chroma = chromadb.Client()
+client_chroma = chromadb.PersistentClient(path="./chromadb_local")
 collection    = client_chroma.get_or_create_collection("empresa_docs")
 
 DATA_DIR = "data"
