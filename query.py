@@ -9,7 +9,8 @@ import chromadb
 load_dotenv()
 api_key       = os.getenv("OPENAI_API_KEY")
 client_openai = OpenAI(api_key=api_key)
-client_chroma = chromadb.PersistentClient(path="./chromadb_local")
+# versión en memoria — no escribe en disco
+client_chroma = chromadb.Client()
 collection    = client_chroma.get_or_create_collection("empresa_docs")
 
 DATA_DIR = "data"
